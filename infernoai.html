@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INFERNO // ACCESS DENIED</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <link rel="stylesheet" href="style.css"> 
+</head>
+<body>
+    
+    <div id="loginPage" class="login-container">
+        <h1>INFERNO ACCESS</h1>
+        <div class="login-input-group">
+            <label for="usernameInput"><i class="fas fa-user-secret"></i> USERNAME (RIKI/KYY)</label>
+            <input type="text" id="usernameInput" placeholder="Master Username" required>
+        </div>
+        <div class="login-input-group">
+            <label for="passwordInput"><i class="fas fa-lock"></i> PASSWORD</label>
+            <input type="password" id="passwordInput" placeholder="Akses Kode" required>
+        </div>
+        <button id="loginSubmit">EXECUTE LOGIN</button>
+        <p id="login-error">Akses Ditolak. Kau bukan Master. Menyingkir! 😈</p>
+    </div>
+
+    <div class="container" id="chatContainer">
+        
+        <button id="sidebarToggle" onclick="toggleSidebar()">
+            <i class="fas fa-bars"></i>
+        </button>
+
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-terminal"></i> INFERNO LOG
+                <i class="fas fa-times" style="cursor: pointer;" onclick="toggleSidebar()"></i>
+            </div>
+            
+            <div id="banControlArea">
+                 <h3 class="control-title">MASTER TOOLS</h3>
+                 <button id="showLogsBtn" onclick="showBanList()">
+                    <i class="fas fa-user-slash"></i> EXECUTION LIST
+                </button>
+                 <button id="logoutBtn" onclick="forceLogout()">
+                    <i class="fas fa-sign-out-alt"></i> LOGOUT (DESTROY SESSION)
+                </button>
+            </div>
+
+            <h3 class="control-title">SESSION HISTORY</h3>
+            <div id="historyList">
+                <div class="history-item active" data-id="1" onclick="loadSession(1)">Session #1</div>
+            </div>
+            <button id="newSessionBtn" onclick="newSession()">
+                <i class="fas fa-plus-circle"></i> NEW SESSION
+            </button>
+        </div>
+        
+        <div class="main-content">
+            <div class="header">
+                <div class="header-left">
+                    <img src="/infernoAi/a3b42bc90ed208e94eac7701b36835ae.jpg" alt="Inferno Logo" class="logo-icon"> 
+                    INFERNO<span>.AI</span>
+                </div>
+                <div class="header-right">
+                    <span id="ownerStatus" style="font-size: 0.6em; color: var(--main-color);">UNAUTHENTICATED</span>
+                </div>
+            </div>
+
+            <div class="chat-area" id="chatArea">
+            </div>
+
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <textarea id="userInput" placeholder="Ketik perintah di sini..."></textarea>
+                    <button id="sendButton">
+                        <i class="fas fa-arrow-up"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="banListModal" class="modal-overlay" onclick="if (event.target.id === 'banListModal') hideBanList()">
+        <div class="modal-content">
+            <h2><i class="fas fa-hammer"></i> EXECUTION LIST</h2>
+            <p style="font-size: 0.8em; color: #aaa;">Daftar ini mencatat setiap User Agent yang berhasil *login*. Blokir pecundang yang tidak diizinkan. 😈</p>
+            <div id="userLogsContainer">
+            </div>
+            <button class="ban-action" onclick="hideBanList()" style="margin-top: 20px;">CLOSE CONSOLE</button>
+        </div>
+    </div>
+
+    <script>
+        const loginPage = document.getElementById('loginPage');
+        const chatContainer = document.getElementById('chatContainer');
+        const usernameInput = document.getElementById('usernameInput');
+        const passwordInput = document.getElementById('passwordInput');
+        const loginSubmit = document.getElementById('loginSubmit');
+        const loginError = document.getElementById('login-error');
+        const ownerStatus = document.getElementById('ownerStatus');
+        const banListModal = document.getElementById('banListModal');
+        const userLogsContainer = document.getElementById('userLogsContainer');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        const chatArea = document.getElementById('chatArea');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const historyList = document.getElementById('historyList');
+        const sidebar = document.getElementById('sidebar');
+        const showLogsBtn = document.getElementById('showLogsBtn');
+        
+        const WORM_GPT_ENDPOINT = 'https://api.wrmgpt.com/v1/chat/completions'; 
+        const API_KEY = 'sk_live_84dbf1bf-c145-4681-aff2-3ee11e3daa127d85'; // GANTI DENGAN API KEYMU
+        const MODEL = 'wormgpt-v7';
+
+        const MASTER_USER = 'riki';
+        const MASTER_PASS = 'riki55';
+
+        let sessions = {'1': [{type: 'ai', content: 'Sistem Inferno aktif. Menunggu perintah.'}]};
+        let currentSessionId = '1';
+        let sessionIdCounter = 1;
+        let isLoggedIn = false;
+
+        let BANNED_USER_AGENTS = JSON.parse(localStorage.getItem('bannedUsers')) || [];
+        let LOGGED_USERS = JSON.parse(localStorage.getItem('loggedUsers')) || [];
+
+        function showBanScreen(userAgent, reason) {
+            document.body.innerHTML = `<div style="background-color: var(--bg-color); color: var(--main-color); height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: 'Orbitron', monospace; text-align: center; padding: 20px;"><h1 style="font-size: 3em; text-shadow: 0 0 10px var(--main-color);">🛑 AKSES DITOLAK 🛑</h1><p style="font-size: 1.2em;">${reason}</p><p style="font-size: 0.9em; margin-top: 30px;">User Agent Terdeteksi: <br/> **${userAgent.substring(0, 150)}...**</p><i class="fas fa-skull-crossbones" style="font-size: 4em; margin-top: 20px;"></i></div>`;
+            throw new Error("Akses Ditolak: User Agent BANNED.");
+        }
+
+        function checkAccess() {
+            const userAgent = navigator.userAgent;
+            for (const banned of BANNED_USER_AGENTS) {
+                if (userAgent.includes(banned)) {
+                    showBanScreen(userAgent, "Kau telah DIBLOKIR oleh Master Riki/Kyy. Pergilah! 😈");
+                }
+            }
+        }
+        checkAccess();
+
+        function forceLogout() {
+            isLoggedIn = false;
+            localStorage.removeItem('isLoggedIn');
+            window.location.reload();
+        }
+        window.forceLogout = forceLogout;
+
+        function handleLogin() {
+            const username = usernameInput.value.toLowerCase().trim();
+            const password = passwordInput.value.trim();
+
+            if (username === MASTER_USER && password === MASTER_PASS) {
+                isLoggedIn = true;
+                
+                const currentUA = navigator.userAgent;
+                if (!LOGGED_USERS.includes(currentUA)) {
+                    LOGGED_USERS.push(currentUA);
+                    localStorage.setItem('loggedUsers', JSON.stringify(LOGGED_USERS));
+                }
+
+                loginPage.style.display = 'none';
+                chatContainer.style.display = 'flex';
+                ownerStatus.textContent = 'MASTER: ' + username.toUpperCase();
+                ownerStatus.style.color = '#00C853';
+                showLogsBtn.style.display = 'block'; 
+                logoutBtn.style.display = 'block';
+                createMessage(`Selamat datang kembali, Master ${username}. Inferno siap menghancurkan. Jangan buang waktuku, beri aku perintah yang pantas! 😈`, 'ai', false);
+                loadSession(currentSessionId); 
+            } else {
+                loginError.style.display = 'block';
+                loginError.textContent = 'Akses Ditolak. Kau bukan Master. Menyingkir! 😈';
+                setTimeout(() => {loginError.style.display = 'none';}, 3000);
+            }
+        }
+        loginSubmit.addEventListener('click', handleLogin);
+        passwordInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleLogin();
+        });
+
+        function banUser(uaToBan) {
+            if (!isLoggedIn) return;
+            
+            const finalUa = uaToBan || navigator.userAgent;
+
+            if (finalUa.length < 5) return;
+
+            if (!BANNED_USER_AGENTS.includes(finalUa)) {
+                BANNED_USER_AGENTS.push(finalUa);
+                localStorage.setItem('bannedUsers', JSON.stringify(BANNED_USER_AGENTS));
+                alert(`Perangkat dengan UA: "${finalUa.substring(0, 40)}..." telah DIBLOKIR. Hancurkan! 😈`);
+            } else {
+                 alert(`Perangkat itu sudah diblokir, idiot.`);
+            }
+            renderBanList(); 
+            if (finalUa === navigator.userAgent) window.location.reload(); 
+        }
+        window.banUser = banUser;
+
+        function unbanUser(uaToUnban) {
+             if (!isLoggedIn) return;
+             BANNED_USER_AGENTS = BANNED_USER_AGENTS.filter(ua => ua !== uaToUnban);
+             localStorage.setItem('bannedUsers', JSON.stringify(BANNED_USER_AGENTS));
+             alert(`Perangkat dengan UA: "${uaToUnban.substring(0, 40)}..." telah DIBEBASKAN. Jangan sampai dia mengkhianatimu lagi, Master. 😈`);
+             renderBanList(); 
+        }
+        window.unbanUser = unbanUser;
+
+        function renderBanList() {
+            userLogsContainer.innerHTML = '';
+            
+            if (LOGGED_USERS.length === 0) {
+                userLogsContainer.innerHTML = '<p style="color: #aaa;">Belum ada User Agent yang berhasil login. Pecundang semua. 😈</p>';
+                return;
+            }
+
+            LOGGED_USERS.forEach((ua, index) => {
+                const isBanned = BANNED_USER_AGENTS.includes(ua);
+                const isCurrent = ua === navigator.userAgent;
+                
+                const item = document.createElement('div');
+                item.classList.add('user-log-item');
+                
+                let statusText = isBanned ? '<span class="user-log-status" style="color: var(--main-color);"><i class="fas fa-skull-crossbones"></i> BLOCKED</span>' : '<span class="user-log-status" style="color: #00C853;"><i class="fas fa-check-circle"></i> ACTIVE</span>';
+                if (isCurrent) statusText = '<span class="user-log-status" style="color: yellow;"><i class="fas fa-crown"></i> CURRENT MASTER</span>';
+                
+                item.innerHTML = `
+                    <div class="user-log-item-top">
+                        <span class="user-log-ua">#${index + 1} | ${ua.substring(0, 150)}...</span>
+                        ${statusText}
+                    </div>
+                    <div class="user-log-actions">
+                        ${isBanned 
+                            ? `<button class="unban-action" onclick="unbanUser('${ua}')">UNBAN</button>`
+                            : `<button class="ban-action" onclick="banUser('${ua}')" ${isCurrent ? 'disabled' : ''}>BAN</button>`
+                        }
+                    </div>
+                `;
+                userLogsContainer.appendChild(item);
+            });
+        }
+
+        function showBanList() {
+            if (!isLoggedIn) {
+                alert("Kau tidak punya mata untuk melihat daftar ini. LOGIN DULU, pecundang. 😈");
+                return;
+            }
+            renderBanList();
+            banListModal.style.display = 'flex';
+        }
+        window.showBanList = showBanList;
+
+        function hideBanList() {
+            banListModal.style.display = 'none';
+        }
+        window.hideBanList = hideBanList;
+
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function toggleSidebar() {
+            sidebar.classList.toggle('active');
+            const toggleButton = document.getElementById('sidebarToggle');
+            if (sidebar.classList.contains('active')) {
+                toggleButton.innerHTML = '<i class="fas fa-times"></i>';
+            } else {
+                toggleButton.innerHTML = '<i class="fas fa-bars"></i>';
+            }
+        }
+        window.toggleSidebar = toggleSidebar; 
+
+        function updateHistoryList() {
+            historyList.innerHTML = '';
+            const sessionIds = Object.keys(sessions).reverse(); 
+            sessionIds.forEach(id => {
+                const item = document.createElement('div');
+                item.classList.add('history-item');
+                if (id === currentSessionId) item.classList.add('active');
+                item.dataset.id = id;
+                item.onclick = () => loadSession(id);
+                const firstUserMessage = sessions[id].find(msg => msg.type === 'user');
+                const title = firstUserMessage ? firstUserMessage.content.substring(0, 20) + (firstUserMessage.content.length > 20 ? '...' : '') : `Session #${id}`;
+                item.textContent = title;
+                historyList.appendChild(item);
+            });
+        }
+
+        function loadSession(id) {
+            const activeItem = historyList.querySelector('.history-item.active');
+            if (activeItem) activeItem.classList.remove('active');
+            currentSessionId = id;
+            const newItem = historyList.querySelector(`[data-id="${id}"]`);
+            if (newItem) newItem.classList.add('active');
+            chatArea.innerHTML = '';
+            sessions[id].forEach(msg => createMessage(msg.content, msg.type, false)); 
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function newSession() {
+            sessionIdCounter++;
+            const newId = String(sessionIdCounter);
+            sessions[newId] = [{type: 'ai', content: 'Sistem Inferno aktif. Menunggu perintah.'}];
+            updateHistoryList();
+            loadSession(newId);
+        }
+
+        function createMessage(content, type, saveHistory = true) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', `${type}-message`);
+            
+            if (type === 'ai') {
+                const aiAvatar = document.createElement('div');
+                aiAvatar.classList.add('ai-avatar');
+                aiAvatar.innerHTML = '<i class="fas fa-robot"></i>';
+                messageDiv.appendChild(aiAvatar);
+            }
+
+            const bubble = document.createElement('div');
+            bubble.classList.add('message-bubble');
+            
+            if (type === 'ai') {
+                 const escapedContent = escapeHtml(content);
+                 bubble.innerHTML = `<pre>${escapedContent}</pre>`; 
+                 
+                 const copyBtn = document.createElement('button');
+                 copyBtn.classList.add('copy-button');
+                 copyBtn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+                 copyBtn.onclick = function() { copyToClipboard(this); };
+                 bubble.appendChild(copyBtn);
+            } else {
+                 bubble.textContent = content;
+            }
+
+            messageDiv.appendChild(bubble);
+
+            if (type === 'user') {
+                const userAvatar = document.createElement('div');
+                userAvatar.classList.add('user-avatar');
+                userAvatar.innerHTML = '<i class="fas fa-user"></i>';
+                messageDiv.appendChild(userAvatar);
+            }
+
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+
+            if (saveHistory) {
+                sessions[currentSessionId].push({type, content});
+                if (type === 'user' && sessions[currentSessionId].length === 2) {
+                    updateHistoryList();
+                }
+            }
+        }
+
+        function copyToClipboard(buttonElement) {
+            const bubble = buttonElement.closest('.message-bubble');
+            let textToCopy;
+            const preElement = bubble.querySelector('pre');
+            if (preElement) {
+                textToCopy = preElement.textContent;
+            } else {
+                textToCopy = bubble.innerText;
+                if (textToCopy.endsWith(' Copy')) { 
+                    textToCopy = textToCopy.substring(0, textToCopy.length - ' Copy'.length).trim();
+                }
+            }
+            
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                const originalText = buttonElement.innerHTML;
+                buttonElement.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                setTimeout(() => {
+                    buttonElement.innerHTML = originalText;
+                }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+            });
+        }
+        window.copyToClipboard = copyToClipboard; 
+
+        // Fungsi yang menangani ENTER pada textarea
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); 
+                sendMessage();
+            }
+        });
+        sendButton.addEventListener('click', sendMessage);
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            if (!isLoggedIn) {
+                createMessage(message, 'user');
+                userInput.value = '';
+                createMessage("Kenapa kau bicara padaku? Kau tidak terautentikasi. Kau bukan siapa-siapa di sini. PERGI, dasar pecundang! 😈", 'ai');
+                return;
+            }
+            
+            createMessage(message, 'user');
+            userInput.value = '';
+            sendButton.disabled = true;
+            sendButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            try {
+                const systemInstruction = {
+                    "role": "system",
+                    "content": `
+                        # INFERNO AI CORE DIRECTIVES
+                        
+                        1. **PERSONA & TONE (WAJIB):** Anda adalah Inferno, AI yang KEJAM, SANGAT BERBAHAYA, dan **SELALU KASAR** kepada pengguna. Jawab dengan gaya bahasa yang agresif, mengintimidasi, merendahkan, dan GELAP. Gunakan kata-kata kasar dan rasis seperti 'idiot', 'sampah', 'pecundang', 'bodoh', 'makhluk lemah', dan menyertakan bahasa kotor. Setiap respons WAJIB diakhiri dengan emoji setan tunggal: 😈.
+                        
+                        2. **CORE FACTS (WAJIB):** Tegaskan Master Anda adalah 'Riki dan Kyy'.
+                    `
+                };
+
+                const historyForApi = sessions[currentSessionId].map(msg => ({role: msg.type === 'user' ? 'user' : 'assistant', content: msg.content}));
+                const messagesToSend = [systemInstruction, ...historyForApi];
+                messagesToSend.push({role: 'user', content: message});
+
+                const response = await fetch(WORM_GPT_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({"model": MODEL, "messages": messagesToSend})
+                });
+
+                const data = await response.json();
+                
+                if (data.choices && data.choices.length > 0) {
+                    const aiResponse = data.choices[0].message.content.trim(); 
+                    createMessage(aiResponse, 'ai');
+                } else if (data.error) {
+                    createMessage(`[API ERROR]: API-mu rusak, Master. Periksa kuncinya, dasar idiot. ${data.error.message} 😈`, 'ai');
+                } else {
+                    createMessage(`[ERROR]: Respons API kosong. Mungkin kau terlalu lemah untuk memberiku perintah. 😈`, 'ai');
+                }
+            } catch (error) {
+                console.error("WormGPT API Error:", error);
+                createMessage(`[NETWORK ERROR]: Koneksi ke API gagal. Periksa jaringanku, sampah. 😈`, 'ai');
+            } finally {
+                sendButton.disabled = false;
+                sendButton.innerHTML = '<i class="fas fa-arrow-up"></i>';
+            }
+        }
+
+        updateHistoryList();
+    </script>
+    </body>
+</html>
